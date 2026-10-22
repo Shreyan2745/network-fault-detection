@@ -1,0 +1,228 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Network Fault Detection System</title>
+<style>
+  :root{
+    --bg:#0B2234; --panel:#122E44; --panel2:#17384F; --line:#24485F;
+    --text:#E8F0F5; --muted:#8FA6B4; --teal:#0EA5A4;
+    --green:#22C55E; --amber:#F59E0B; --red:#EF4444; --gray:#64748B;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);font:14px/1.4 "Segoe UI",Arial,sans-serif}
+  header{display:flex;align-items:center;justify-content:space-between;padding:16px 24px;border-bottom:1px solid var(--line)}
+  h1{font-size:20px;margin:0;font-weight:700}
+  h1 small{display:block;font-size:12px;color:var(--teal);font-weight:600;letter-spacing:1.5px;text-transform:uppercase}
+  .live{display:flex;gap:10px;align-items:center;color:var(--muted);font-variant-numeric:tabular-nums}
+  .dot{width:10px;height:10px;border-radius:50%;background:var(--green);box-shadow:0 0 0 0 rgba(34,197,94,.6);animation:pulse 1.6s infinite}
+  .dot.off{background:var(--red);animation:none}
+  @keyframes pulse{70%{box-shadow:0 0 0 10px rgba(34,197,94,0)}100%{box-shadow:0 0 0 0 rgba(34,197,94,0)}}
+  main{display:grid;grid-template-columns:1.6fr 1fr;gap:16px;padding:16px 24px;max-width:1400px;margin:auto}
+  .card{background:var(--panel);border-radius:12px;padding:16px}
+  .card h2{font-size:12px;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);margin:0 0 12px}
+  .stats{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .stat{background:var(--panel2);border-radius:10px;padding:14px}
+  .stat b{display:block;font-size:28px;font-variant-numeric:tabular-nums}
+  .stat span{color:var(--muted);font-size:12px}
+  .banner{margin-top:12px;border-radius:10px;padding:12px 14px;font-weight:600}
+  .banner.ok{background:rgba(34,197,94,.12);color:var(--green)}
+  .banner.bad{background:rgba(239,68,68,.15);color:#FCA5A5}
+  .banner.warn{background:rgba(245,158,11,.15);color:#FCD34D}
+  svg text{fill:var(--text);font-size:11px}
+  svg .sub{fill:var(--muted);font-size:10px}
+  canvas{width:100%;height:220px;display:block}
+  .legend{display:flex;flex-wrap:wrap;gap:12px;margin-top:8px;color:var(--muted);font-size:12px}
+  .legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px;vertical-align:-1px}
+  table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
+  th,td{text-align:left;padding:8px 6px;border-bottom:1px solid var(--line)}
+  th{color:var(--muted);font-weight:600;font-size:12px}
+  .pill{display:inline-block;padding:2px 9px;border-radius:99px;font-size:11px;font-weight:700}
+  .UP{background:rgba(34,197,94,.15);color:var(--green)}
+  .DOWN,.UNREACHABLE{background:rgba(239,68,68,.15);color:#FCA5A5}
+  .DEGRADED,.HIGH.LATENCY{background:rgba(245,158,11,.15);color:#FCD34D}
+  .CHECKING{background:rgba(100,116,139,.2);color:var(--muted)}
+  .alerts{max-height:260px;overflow:auto;margin:0;padding:0;list-style:none}
+  .alerts li{display:grid;grid-template-columns:64px 1fr;gap:8px;padding:8px 0;border-bottom:1px solid var(--line)}
+  .alerts time{color:var(--muted);font-variant-numeric:tabular-nums}
+  .alerts .t{font-weight:700}
+  .alerts .down .t{color:#FCA5A5}.alerts .warn .t{color:#FCD34D}.alerts .ok .t{color:var(--green)}
+  .alerts .d{color:var(--muted);font-size:12px}
+  .empty{color:var(--muted);padding:8px 0}
+  .inj{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .inj label{font-size:12px;color:var(--muted)}
+  .inj select,.inj input{width:100%;margin-top:4px;padding:8px;border-radius:8px;border:1px solid var(--line);background:var(--panel2);color:var(--text)}
+  .inj .full{grid-column:1/-1}
+  button{padding:9px 12px;border:0;border-radius:8px;font-weight:700;cursor:pointer}
+  .btn{background:var(--teal);color:#fff}.btn2{background:var(--panel2);color:var(--text)}
+  .note{color:var(--muted);font-size:12px;margin-top:8px}
+  .span2{grid-column:1/-1}
+  @media(max-width:900px){main{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<header>
+  <h1><small>Live network monitor</small>Network Fault Detection System</h1>
+  <div class="live"><span class="dot" id="dot"></span><span id="clock">--:--:--</span></div>
+</header>
+
+<main>
+  <section class="card">
+    <h2>Topology</h2>
+    <svg id="topo" viewBox="0 0 640 330" width="100%"></svg>
+  </section>
+
+  <section class="card">
+    <h2>Status</h2>
+    <div class="stats">
+      <div class="stat"><b id="sUp">–</b><span>Hosts up</span></div>
+      <div class="stat"><b id="sFaults">–</b><span>Active faults</span></div>
+      <div class="stat"><b id="sRtt">–</b><span>Avg RTT</span></div>
+      <div class="stat"><b id="sLoss">–</b><span>Avg packet loss</span></div>
+    </div>
+    <div id="banner"><div class="banner ok">Checking network…</div></div>
+  </section>
+
+  <section class="card">
+    <h2>Round-trip time, last 60 s (ms)</h2>
+    <canvas id="chart"></canvas>
+    <div class="legend" id="legend"></div>
+  </section>
+
+  <section class="card">
+    <h2>Alert log</h2>
+    <ul class="alerts" id="alerts"></ul>
+  </section>
+
+  <section class="card">
+    <h2>Hosts</h2>
+    <table>
+      <thead><tr><th>Device</th><th>IP</th><th>Status</th><th>Last RTT</th><th>Avg RTT</th><th>Loss</th></tr></thead>
+      <tbody id="rows"></tbody>
+    </table>
+  </section>
+
+  <section class="card">
+    <h2>Fault injection (test mode)</h2>
+    <div class="inj">
+      <label class="full">Device
+        <select id="injHost"></select></label>
+      <label>Add delay (ms)<input id="injDelay" type="number" min="0" value="200"></label>
+      <label>Packet loss (%)<input id="injLoss" type="number" min="0" max="100" value="0"></label>
+      <button class="btn" onclick="applyInject()">Inject fault</button>
+      <button class="btn2" onclick="clearInject()">Clear all</button>
+    </div>
+    <p class="note">Simulates congestion, like Linux <code>tc netem</code>. For real outages, switch off a device's Wi-Fi or its mobile data.</p>
+  </section>
+</main>
+
+<script>
+const COLORS = {UP:"#22C55E", DEGRADED:"#F59E0B", "HIGH LATENCY":"#F59E0B", DOWN:"#EF4444", UNREACHABLE:"#EF4444", CHECKING:"#64748B"};
+const SERIES = ["#38BDF8","#A78BFA","#F472B6","#FBBF24","#34D399","#FB923C","#60A5FA","#E879F9"];
+const fmt = (v, u="") => v == null ? "–" : (v < 10 ? v.toFixed(1) : Math.round(v)) + u;
+let filledSelect = false;
+
+function node(svg, x, y, label, sub, color, shape="circle"){
+  const g = document.createElementNS("http://www.w3.org/2000/svg","g");
+  let s = shape === "rect"
+    ? `<rect x="${x-26}" y="${y-16}" width="52" height="32" rx="7" fill="#17384F" stroke="${color}" stroke-width="3"/>`
+    : `<circle cx="${x}" cy="${y}" r="15" fill="${color}" stroke="#0B2234" stroke-width="3"/>`;
+  g.innerHTML = s + `<text x="${x}" y="${y+(shape==="rect"?30:30)}" text-anchor="middle">${label}</text>`
+              + (sub ? `<text class="sub" x="${x}" y="${y+43}" text-anchor="middle">${sub}</text>` : "");
+  svg.appendChild(g);
+}
+function link(svg, a, b, bad){
+  const l = document.createElementNS("http://www.w3.org/2000/svg","line");
+  Object.entries({x1:a[0],y1:a[1],x2:b[0],y2:b[1],stroke:bad?"#EF4444":"#3B6178","stroke-width":bad?3:2}).forEach(([k,v])=>l.setAttribute(k,v));
+  if (bad) l.setAttribute("stroke-dasharray","7 5");
+  svg.appendChild(l);
+}
+
+function drawTopo(d){
+  const svg = document.getElementById("topo"); svg.innerHTML = "";
+  const gw = d.hosts.find(h => h.group === "gateway");
+  const lan = d.hosts.filter(h => h.group === "lan");
+  const inet = d.hosts.filter(h => h.group === "internet");
+  const fk = new Set(d.faults.map(f => f.key));
+  const ME = [70,165], GW = [240,165], ISP = [420,60];
+  const spread = (n, y0, y1) => n === 1 ? [(y0+y1)/2] : Array.from({length:n},(_,i)=>y0+i*(y1-y0)/(n-1));
+
+  link(svg, ME, GW, fk.has("LINK:local"));
+  if (inet.length) link(svg, GW, ISP, fk.has("LINK:isp"));
+  const lanY = spread(lan.length, 140, 270), inetY = spread(inet.length, 30, 110);
+  lan.forEach((h,i) => link(svg, GW, [430, lanY[i]], h.status === "DOWN"));
+  inet.forEach((h,i) => link(svg, ISP, [570, inetY[i]], false));
+
+  node(svg, ...ME, "This laptop", "monitor", "#0EA5A4", "rect");
+  if (gw) node(svg, ...GW, gw.name, gw.ip, COLORS[gw.status], "rect");
+  if (inet.length){
+    const ispBad = fk.has("LINK:isp") || fk.has("LINK:local");
+    node(svg, ...ISP, "ISP / Internet", "", ispBad ? "#EF4444" : "#3B6178", "rect");
+  }
+  lan.forEach((h,i) => node(svg, 430, lanY[i], h.name, h.ip, COLORS[h.status]));
+  inet.forEach((h,i) => node(svg, 570, inetY[i], h.name, h.ip, COLORS[h.status]));
+}
+
+function drawChart(d){
+  const c = document.getElementById("chart"), r = devicePixelRatio || 1;
+  const W = c.clientWidth, H = c.clientHeight; c.width = W*r; c.height = H*r;
+  const x = c.getContext("2d"); x.scale(r,r); x.clearRect(0,0,W,H);
+  const all = d.hosts.flatMap(h => h.history.filter(v => v != null));
+  const max = Math.max(50, ...all) * 1.15, L = 38, B = 20, T = 8;
+  const Y = v => T + (H-T-B) * (1 - v/max), N = 30, X = i => L + (W-L-8) * i/(N-1);
+  x.font = "11px Segoe UI, Arial"; x.fillStyle = "#8FA6B4"; x.strokeStyle = "#24485F"; x.lineWidth = 1;
+  for (let k=0;k<=4;k++){ const v = max*k/4; x.beginPath(); x.moveTo(L,Y(v)); x.lineTo(W-8,Y(v)); x.stroke(); x.fillText(Math.round(v), 4, Y(v)+4); }
+  x.fillText("-60 s", L, H-4); x.fillText("now", W-30, H-4);
+  const lim = d.config.latency_limit;
+  if (lim < max){ x.setLineDash([5,4]); x.strokeStyle="#F59E0B"; x.beginPath(); x.moveTo(L,Y(lim)); x.lineTo(W-8,Y(lim)); x.stroke(); x.setLineDash([]); x.fillStyle="#F59E0B"; x.fillText(lim+" ms limit", W-90, Y(lim)-4); }
+  const leg = document.getElementById("legend"); leg.innerHTML = "";
+  d.hosts.forEach((h,hi) => {
+    const col = SERIES[hi % SERIES.length], off = N - h.history.length;
+    x.strokeStyle = col; x.lineWidth = 2; x.beginPath(); let pen = false;
+    h.history.forEach((v,i) => { if (v == null){ pen = false; return; } const px = X(i+off), py = Y(v); pen ? x.lineTo(px,py) : x.moveTo(px,py); pen = true; });
+    x.stroke();
+    leg.insertAdjacentHTML("beforeend", `<span><i style="background:${col}"></i>${h.name}</span>`);
+  });
+}
+
+function render(d){
+  document.getElementById("clock").textContent = d.time;
+  document.getElementById("dot").className = "dot";
+  const s = d.summary;
+  document.getElementById("sUp").textContent = `${s.up} / ${s.total}`;
+  document.getElementById("sFaults").textContent = s.faults;
+  document.getElementById("sRtt").textContent = fmt(s.avg_rtt, " ms");
+  document.getElementById("sLoss").textContent = fmt(s.loss, " %");
+
+  document.getElementById("banner").innerHTML = d.faults.length
+    ? d.faults.map(f => `<div class="banner ${f.level === "down" ? "bad" : "warn"}">${f.type}: ${f.target}<div style="font-weight:400;font-size:12px;opacity:.85">${f.detail}</div></div>`).join("")
+    : `<div class="banner ok">All systems normal</div>`;
+
+  document.getElementById("rows").innerHTML = d.hosts.map(h =>
+    `<tr><td>${h.name}</td><td>${h.ip}</td><td><span class="pill ${h.status}">${h.status}</span></td>
+     <td>${fmt(h.rtt," ms")}</td><td>${fmt(h.avg," ms")}</td><td>${fmt(h.loss," %")}</td></tr>`).join("");
+
+  document.getElementById("alerts").innerHTML = d.alerts.length
+    ? d.alerts.map(a => `<li class="${a.level}"><time>${a.time}</time><div><span class="t">${a.type}</span> · ${a.target}<div class="d">${a.detail}</div></div></li>`).join("")
+    : `<li class="empty">No alerts yet</li>`;
+
+  if (!filledSelect){
+    document.getElementById("injHost").innerHTML = d.hosts.map(h => `<option value="${h.id}">${h.name} (${h.ip})</option>`).join("");
+    filledSelect = true;
+  }
+  drawTopo(d); drawChart(d);
+}
+
+async function tick(){
+  try { render(await (await fetch("/status")).json()); }
+  catch(e){ document.getElementById("dot").className = "dot off"; }
+}
+async function post(body){ await fetch("/inject",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)}); tick(); }
+function applyInject(){ post({id: injHost.value, delay: +injDelay.value || 0, loss: +injLoss.value || 0}); }
+function clearInject(){ post({id: "all"}); }
+
+tick(); setInterval(tick, 2000);
+</script>
+</body>
+</html>
